@@ -51,12 +51,12 @@ jobs:
           
           # ▼▼▼ スクリプトの設定値をここに記述 ▼▼▼
           # これらの値はリポジトリで管理されます
-          SEARCH_KEYWORDS: "inflation, primordial black hole"
+          SEARCH_KEYWORDS: "inflation, primordial black hole, PBH"
           SEARCH_CATEGORY: "astro-ph.CO,gr-qc,hep-th,hep-ph"
           SMTP_SERVER: "smtp.gmail.com"
           SMTP_PORT: "587"
-          SMTP_USER: "your-gmail-address@gmail.com" # 送信元(Gmailアドレス)
-          MAIL_FROM: "your-gmail-address@gmail.com" # 送信元(Gmailアドレス)
-          MAIL_TO: "your-notification-email@example.com" # 送信先
+          SMTP_USER: "kenzaburo.kawaguchi@gmail.com" # 送信元(Gmailアドレス)
+          MAIL_FROM: "kenzaburo.kawaguchi@gmail.com" # 送信元(Gmailアドレス)
+          MAIL_TO: "kenzaburo.kawaguchi@gmail.com" # 送信先
           MAIL_SUBJECT: "【arXiv Alerter】注目論文が見つかりました"
         run: python arxiv_alerter.py
