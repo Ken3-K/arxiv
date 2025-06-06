@@ -56,7 +56,7 @@ jobs:
           # (envセクションは変更なし)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SEARCH_KEYWORDS: "inflation, primordial black hole"
+          SEARCH_KEYWORDS: "inflation, primordial black hole, PBH"
           SEARCH_CATEGORY: "astro-ph.CO,gr-qc,hep-th,hep-ph"
           SMTP_SERVER: "smtp.gmail.com"
           SMTP_PORT: "587"
