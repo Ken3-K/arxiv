@@ -1,0 +1,62 @@
+# GitHub Actions Workflow: arXiv Keyword Alerter
+
+# ワークフローの名前
+name: arXiv Keyword Alerter
+
+on:
+  # このワークフローを起動するタイミングを指定
+  
+  # 1. スケジュール実行
+  # 毎日決まった時刻に自動で実行します。
+  # cronの書式は '分 時 日 月 曜日' (UTC基準)
+  # '0 1 * * *' はUTCの午前1時 = 日本標準時(JST)の午前10時に実行
+  schedule:
+    - cron: '0 1 * * *'
+      
+  # 2. 手動実行
+  # GitHubのActionsタブにある "Run workflow" ボタンからいつでも手動で実行できます。
+  workflow_dispatch:
+
+jobs:
+  # 実行するジョブを定義
+  run-arxiv-alerter:
+    # 実行環境として、最新のUbuntuを使用
+    runs-on: ubuntu-latest
+
+    steps:
+      # ステップ1: リポジトリのコードをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ステップ2: Python環境をセットアップ
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # 使用するPythonのバージョン
+
+      # ステップ3: 必要なPythonライブラリをインストール
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # 必要なライブラリをすべて列挙
+          pip install requests google-generativeai beautifulsoup4 lxml python-dotenv
+
+      # ステップ4: Pythonスクリプトを実行
+      - name: Run arXiv Alerter script
+        # envセクションで、スクリプトに渡す環境変数を定義
+        env:
+          # ▼▼▼ GitHub Secretsから機密情報を安全に読み込む ▼▼▼
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          
+          # ▼▼▼ スクリプトの設定値をここに記述 ▼▼▼
+          # これらの値はリポジトリで管理されます
+          SEARCH_KEYWORDS: "inflation, primordial black hole"
+          SEARCH_CATEGORY: "astro-ph.CO,gr-qc,hep-th,hep-ph"
+          SMTP_SERVER: "smtp.gmail.com"
+          SMTP_PORT: "587"
+          SMTP_USER: "your-gmail-address@gmail.com" # 送信元(Gmailアドレス)
+          MAIL_FROM: "your-gmail-address@gmail.com" # 送信元(Gmailアドレス)
+          MAIL_TO: "your-notification-email@example.com" # 送信先
+          MAIL_SUBJECT: "【arXiv Alerter】注目論文が見つかりました"
+        run: python arxiv_alerter.py
