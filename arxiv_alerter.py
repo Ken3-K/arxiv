@@ -78,7 +78,7 @@ def generate_summary_with_gemini(paper_info, full_text):
 - **著者:** {", ".join(paper_info['authors'])}
 
 # 論文本文（またはアブストラクト）
-{full_text[:30000]}
+{full_text[:100000]}
 
 # 解説のポイント
 1. この研究が解決しようとしている問題点は何か？
