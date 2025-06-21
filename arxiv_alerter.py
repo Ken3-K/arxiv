@@ -23,34 +23,33 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path='config.env')
 
 # --- 1. CONFIGURATION LOADING ---
-# ▼▼▼ 修正点: デフォルト値を扱えるように関数を修正 ▼▼▼
-
-
-def get_env_var(var_name, default=None):
-    """環境変数を取得する。見つからない場合はデフォルト値を返すか、デフォルトがなければエラーで終了。"""
+def get_env_var(var_name):
+    """
+    環境変数を取得する。見つからない場合はエラーメッセージを表示して終了する。
+    """
     value = os.environ.get(var_name)
-    if value is not None:
-        return value
-    if default is not None:
-        return default
-
-    print(f"エラー: 必須の環境変数 '{var_name}' が設定されていません。")
-    exit(1)
+    if value is None:
+        print(f"エラー: 必須の環境変数 '{var_name}' が設定されていません。")
+        exit(1)
+    return value
 
 
-# get_env_varの呼び出し方はそのままで、関数定義の修正によりエラーが解消されます
+# arXiv用
 SEARCH_KEYWORDS = get_env_var("SEARCH_KEYWORDS")
 SEARCH_CATEGORY = get_env_var("SEARCH_CATEGORY")
-# NoneでもOKなのでos.environ.getを直接使用
+
+# Gemini API用
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# メール送信用
 SMTP_SERVER = get_env_var("SMTP_SERVER")
-SMTP_PORT = int(get_env_var("SMTP_PORT", 587))
+SMTP_PORT = int(get_env_var("SMTP_PORT"))
 SMTP_USER = get_env_var("SMTP_USER")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")  # NoneでもOK
+SMTP_PASSWORD = get_env_var("SMTP_PASSWORD") 
 MAIL_FROM = get_env_var("MAIL_FROM")
 MAIL_TO = get_env_var("MAIL_TO")
-MAIL_SUBJECT = get_env_var("MAIL_SUBJECT", "【arXiv Alerter】注目論文が見つかりました")
-# --- ▲▲▲ 修正完了 ▲▲▲
+MAIL_SUBJECT = get_env_var("MAIL_SUBJECT")
+
 
 # --- 2. GEMINI API SETUP ---
 if GEMINI_API_KEY:
@@ -129,7 +128,7 @@ def search_arxiv():
     """arXiv APIでキーワードに合致する過去24時間の論文を検索する。"""
     print(f"キーワード '{SEARCH_KEYWORDS}' で論文を検索中...")
 
-    # 各キーワードを (ti:"..." OR abs:"...") の形式にする
+    # タイトルとアブストラクトから検索するので、各キーワードを (ti:"..." OR abs:"...") の形式にする
     keywords = [
         f'(ti:"{k.strip()}" OR abs:"{k.strip()}")' for k in SEARCH_KEYWORDS.split(',')]
     # 各キーワード検索を "OR" で連結し、全体をカッコで囲む
@@ -161,7 +160,7 @@ def search_arxiv():
     ns = {'atom': 'http://www.w3.org/2005/Atom'}
 
     found_papers = []
-    yesterday = datetime.now(timezone.utc) - timedelta(days=2)
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
 
     for entry in root.findall('atom:entry', ns):
         published_str = entry.find('atom:published', ns).text
