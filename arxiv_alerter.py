@@ -17,7 +17,7 @@ import requests
 import xml.etree.ElementTree as ET
 import google.generativeai as genai
 from dotenv import load_dotenv
-
+from bs4 import BeautifulSoup
 # --- 0. SETUP ---
 # .envファイルから環境変数を読み込む (ローカルテスト用)
 load_dotenv(dotenv_path='config.env')
@@ -68,7 +68,7 @@ def generate_summary_with_gemini(paper_info, full_text):
     if not GEMINI_API_KEY:
         return "（Geminiによる解説はスキップされました：APIキーが未設定です）"
 
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
     prompt = f"""以下のarXiv論文について、内容を専門外の人が読んでも理解できるように、重要なポイントを箇条書きで分かりやすく解説してください。
 
@@ -104,8 +104,6 @@ def fetch_paper_full_text(html_url):
         print(f"  > HTML版の本文を取得中: {html_url}")
         response = requests.get(html_url, timeout=30)
         response.raise_for_status()
-
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.content, 'lxml')
 
         content_div = soup.find('div', class_='ltx_page_content')
