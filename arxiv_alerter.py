@@ -220,6 +220,8 @@ def main():
     full_email_body = f"キーワード「{SEARCH_KEYWORDS}」に関する新しい論文が {len(papers)}件 見つかりました。\n\n"
 
     for i, paper in enumerate(papers, 1):
+        if i != 0:
+            time.sleep(60)
         print(f"--- 論文 {i}/{len(papers)} の処理を開始: {paper['title']} ---")
 
         full_text = fetch_paper_full_text(paper['html_link'])
