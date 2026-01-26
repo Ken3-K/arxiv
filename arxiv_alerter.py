@@ -68,7 +68,7 @@ def generate_summary_with_gemini(paper_info, full_text):
     if not GEMINI_API_KEY:
         return "（Geminiによる解説はスキップされました：APIキーが未設定です）"
 
-    model = genai.GenerativeModel('gemini-2.5-flash-lite-preview-06-17')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     # model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
     prompt = f"""以下のarXiv論文について、内容を専門外の人が読んでも理解できるように、重要なポイントを箇条書きで分かりやすく解説してください。
