@@ -13,25 +13,48 @@ from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime, timedelta, timezone
 import time
+from typing import List, Optional, TypedDict
 import requests
 import xml.etree.ElementTree as ET
 import google.generativeai as genai
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
+
+REQUEST_TIMEOUT = 30
+ARXIV_MAX_RESULTS = 25
+GEMINI_MODEL_NAME = 'gemini-3-flash-preview'
+GEMINI_INPUT_MAX_CHARS = 100000
+PER_PAPER_DELAY_SECONDS = 60
+
+
+class PaperInfo(TypedDict):
+    id: str
+    title: str
+    summary: str
+    authors: List[str]
+    link: str
+    html_link: str
+    published: str
+
 # --- 0. SETUP ---
 # .envファイルから環境変数を読み込む (ローカルテスト用)
 load_dotenv(dotenv_path='config.env')
 
 # --- 1. CONFIGURATION LOADING ---
-def get_env_var(var_name):
+def get_env_var(var_name: str) -> str:
     """
     環境変数を取得する。見つからない場合はエラーメッセージを表示して終了する。
     """
     value = os.environ.get(var_name)
-    if value is None:
+    if value is None or not value.strip():
         print(f"エラー: 必須の環境変数 '{var_name}' が設定されていません。")
         exit(1)
-    return value
+    return value.strip()
+
+
+def parse_csv_env(value: str) -> List[str]:
+    """カンマ区切り文字列をトリム済みリストへ変換する。空要素は除外する。"""
+    return [item.strip() for item in value.split(',') if item.strip()]
 
 
 # arXiv用
@@ -63,12 +86,12 @@ else:
     print("警告: 環境変数 'GEMINI_API_KEY' が設定されていません。")
 
 
-def generate_summary_with_gemini(paper_info, full_text):
+def generate_summary_with_gemini(paper_info: PaperInfo, full_text: str) -> str:
     """Geminiを使用して論文の概要を生成する。"""
     if not GEMINI_API_KEY:
         return "（Geminiによる解説はスキップされました：APIキーが未設定です）"
 
-    model = genai.GenerativeModel('gemini-3-flash-preview')
+    model = genai.GenerativeModel(GEMINI_MODEL_NAME)
     # model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
     prompt = f"""以下のarXiv論文について、内容を専門外の人が読んでも理解できるように、重要なポイントを箇条書きで分かりやすく解説してください。
@@ -78,7 +101,7 @@ def generate_summary_with_gemini(paper_info, full_text):
 - **著者:** {", ".join(paper_info['authors'])}
 
 # 論文本文（またはアブストラクト）
-{full_text[:100000]}
+{full_text[:GEMINI_INPUT_MAX_CHARS]}
 
 # 解説のポイント
 1. この研究が解決しようとしている問題点は何か？
@@ -99,11 +122,11 @@ def generate_summary_with_gemini(paper_info, full_text):
 # --- 3. ARXIV SEARCH & CONTENT FETCHING ---
 
 
-def fetch_paper_full_text(html_url):
+def fetch_paper_full_text(html_url: str) -> Optional[str]:
     """論文のHTMLページから本文テキストを抽出する。"""
     try:
         print(f"  > HTML版の本文を取得中: {html_url}")
-        response = requests.get(html_url, timeout=30)
+        response = requests.get(html_url, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'lxml')
 
@@ -119,37 +142,68 @@ def fetch_paper_full_text(html_url):
         print(f"  > HTMLの取得に失敗: {e}")
         return None
     except Exception as e:
-        print(f"  > HTMLの解析中にエラー: {e}")
+        print(f"  > HTMLの解析中にエラー（URL: {html_url}）: {e}")
         return None
 
 
-def search_arxiv():
+def build_search_query() -> str:
+    """検索キーワードとカテゴリからarXiv検索クエリを組み立てる。"""
+    keyword_terms = parse_csv_env(SEARCH_KEYWORDS)
+    keywords = [f'(ti:"{keyword}" OR abs:"{keyword}")' for keyword in keyword_terms]
+    query = f"({' OR '.join(keywords)})"
+
+    if SEARCH_CATEGORY and SEARCH_CATEGORY.lower() != 'all':
+        category_terms = parse_csv_env(SEARCH_CATEGORY)
+        categories = [f'cat:{category}' for category in category_terms]
+        query += f" AND ({' OR '.join(categories)})"
+
+    return query
+
+
+def get_required_entry_text(entry: ET.Element, tag: str, ns: dict) -> str:
+    """XMLエントリから必須テキストを取得する。"""
+    element = entry.find(tag, ns)
+    if element is None or element.text is None:
+        raise ValueError(f"必須フィールドが欠落しています: {tag}")
+    return element.text.strip()
+
+
+def build_paper_info(entry: ET.Element, ns: dict, published_dt: datetime) -> PaperInfo:
+    """XMLエントリからメール送信用の論文情報を生成する。"""
+    link = get_required_entry_text(entry, 'atom:id', ns)
+    arxiv_id = link.split('/abs/')[-1]
+
+    return {
+        'id': arxiv_id,
+        'title': get_required_entry_text(entry, 'atom:title', ns),
+        'summary': get_required_entry_text(entry, 'atom:summary', ns),
+        'authors': [
+            author_name.text.strip()
+            for author_name in entry.findall('atom:author/atom:name', ns)
+            if author_name.text and author_name.text.strip()
+        ],
+        'link': link,
+        'html_link': f"https://arxiv.org/html/{arxiv_id}",
+        'published': published_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+    }
+
+
+def search_arxiv() -> List[PaperInfo]:
     """arXiv APIでキーワードに合致する過去24時間の論文を検索する。"""
     print(f"キーワード '{SEARCH_KEYWORDS}' で論文を検索中...")
 
-    # タイトルとアブストラクトから検索するので、各キーワードを (ti:"..." OR abs:"...") の形式にする
-    keywords = [
-        f'(ti:"{k.strip()}" OR abs:"{k.strip()}")' for k in SEARCH_KEYWORDS.split(',')]
-    # 各キーワード検索を "OR" で連結し、全体をカッコで囲む
-    keyword_query = f"({' OR '.join(keywords)})"
-
-    query = keyword_query
-
-    if SEARCH_CATEGORY and SEARCH_CATEGORY.lower() != 'all':
-        categories = [f'cat:{c.strip()}' for c in SEARCH_CATEGORY.split(',')]
-        category_query = f"({' OR '.join(categories)})"
-        query += f' AND {category_query}'
+    query = build_search_query()
 
     params = {
         'search_query': query,
         'sortBy': 'submittedDate',
         'sortOrder': 'descending',
-        'max_results': 25
+        'max_results': ARXIV_MAX_RESULTS
     }
 
     try:
         response = requests.get(
-            'http://export.arxiv.org/api/query?', params=params, timeout=30)
+            'http://export.arxiv.org/api/query?', params=params, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
     except requests.RequestException as e:
         print(f"arXiv APIへのリクエスト中にエラー: {e}")
@@ -158,26 +212,20 @@ def search_arxiv():
     root = ET.fromstring(response.content)
     ns = {'atom': 'http://www.w3.org/2005/Atom'}
 
-    found_papers = []
+    found_papers: List[PaperInfo] = []
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
 
     for entry in root.findall('atom:entry', ns):
-        published_str = entry.find('atom:published', ns).text
-        published_dt = datetime.strptime(
-            published_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        try:
+            published_str = get_required_entry_text(entry, 'atom:published', ns)
+            published_dt = datetime.strptime(
+                published_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
 
-        if published_dt > yesterday:
-            arxiv_id = entry.find('atom:id', ns).text.split('/abs/')[-1]
-            paper_info = {
-                'id': arxiv_id,
-                'title': entry.find('atom:title', ns).text.strip(),
-                'summary': entry.find('atom:summary', ns).text.strip(),
-                'authors': [author.find('atom:name', ns).text for author in entry.findall('atom:author', ns)],
-                'link': entry.find('atom:id', ns).text,
-                'html_link': f"https://arxiv.org/html/{arxiv_id}",
-                'published': published_dt.strftime('%Y-%m-%d %H:%M:%S UTC')
-            }
-            found_papers.append(paper_info)
+            if published_dt > yesterday:
+                found_papers.append(build_paper_info(entry, ns, published_dt))
+        except Exception as e:
+            print(f"エントリ解析中にスキップ（理由: {e}）")
+            continue
 
     print(f"{len(found_papers)}件の新しい論文が見つかりました。")
     return found_papers
@@ -185,7 +233,7 @@ def search_arxiv():
 # --- 4. EMAIL NOTIFICATION ---
 
 
-def send_email(subject, body):
+def send_email(subject: str, body: str) -> None:
     """メールを送信する。"""
     if not all([SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, MAIL_FROM, MAIL_TO]):
         print("メール設定が不完全なため、送信をスキップします。")
@@ -207,34 +255,12 @@ def send_email(subject, body):
     except Exception as e:
         print(f"メール送信中にエラーが発生しました: {e}")
 
-# --- 5. MAIN EXECUTION ---
 
-
-def main():
-    """メイン処理"""
-    papers = search_arxiv()
-    if not papers:
-        print("処理対象の論文はありませんでした。")
-        return
-
-    full_email_body = f"キーワード「{SEARCH_KEYWORDS}」に関する新しい論文が {len(papers)}件 見つかりました。\n\n"
-
-    for i, paper in enumerate(papers, 1):
-        if i != 0:
-            time.sleep(60)
-        print(f"--- 論文 {i}/{len(papers)} の処理を開始: {paper['title']} ---")
-
-        full_text = fetch_paper_full_text(paper['html_link'])
-
-        if not full_text:
-            print("  > HTML版の取得に失敗したため、アブストラクトを要約します。")
-            full_text = paper['summary']
-
-        summary_ja = generate_summary_with_gemini(paper, full_text)
-
-        full_email_body += f"""
+def build_paper_section(index: int, paper: PaperInfo, summary_ja: str) -> str:
+    """1本分の論文情報をメール本文のセクション文字列に変換する。"""
+    return f"""
 ==================================================
-論文 {i}: {paper['title']}
+論文 {index}: {paper['title']}
 ==================================================
 
 著者: {", ".join(paper['authors'])}
@@ -250,15 +276,43 @@ def main():
 --------------------------
 
 """
+
+
+def build_email_body(papers: List[PaperInfo]) -> str:
+    """検索結果からメール本文を構築する。"""
+    full_email_body = (
+        f"キーワード「{SEARCH_KEYWORDS}」に関する新しい論文が {len(papers)}件 見つかりました。\n\n"
+    )
+
+    for i, paper in enumerate(papers, 1):
+        if i > 1:
+            time.sleep(PER_PAPER_DELAY_SECONDS)
+        print(f"--- 論文 {i}/{len(papers)} の処理を開始: {paper['title']} ---")
+
+        full_text = fetch_paper_full_text(paper['html_link'])
+
+        if not full_text:
+            print("  > HTML版の取得に失敗したため、アブストラクトを要約します。")
+            full_text = paper['summary']
+
+        summary_ja = generate_summary_with_gemini(paper, full_text)
+        full_email_body += build_paper_section(i, paper, summary_ja)
+
+    return full_email_body
+
+# --- 5. MAIN EXECUTION ---
+
+
+def main() -> None:
+    """メイン処理"""
+    papers = search_arxiv()
+    if not papers:
+        print("処理対象の論文はありませんでした。")
+        return
+
+    full_email_body = build_email_body(papers)
     send_email(MAIL_SUBJECT, full_email_body)
 
 
 if __name__ == "__main__":
-    # beautifulsoup4とlxmlのインストールを促す
-    try:
-        from bs4 import BeautifulSoup
-    except ImportError:
-        print("エラー: 必要なライブラリがインストールされていません。")
-        print("pip install beautifulsoup4 lxml python-dotenv")
-        exit(1)
     main()
