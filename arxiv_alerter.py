@@ -25,6 +25,7 @@ ARXIV_MAX_RESULTS = 25
 GEMINI_MODEL_NAME = 'gemini-3-flash-preview'
 GEMINI_INPUT_MAX_CHARS = 100000
 PER_PAPER_DELAY_SECONDS = 60
+LOCAL_TIMEZONE = timezone(timedelta(hours=9), name='JST')
 
 
 class PaperInfo(TypedDict):
@@ -92,7 +93,7 @@ def generate_summary_with_gemini(paper_info: PaperInfo, full_text: str) -> str:
     if not GEMINI_API_KEY or gemini_client is None:
         return "（Geminiによる解説はスキップされました：APIキーが未設定です）"
 
-    prompt = f"""以下のarXiv論文について、内容を専門外の人が読んでも理解できるように、重要なポイントを箇条書きで分かりやすく解説してください。
+    prompt = f"""以下のarXiv論文について、同分野の研究者が短時間で要点を把握できるように解説してください。
 
 # 論文情報
 - **タイトル:** {paper_info['title']}
@@ -101,13 +102,27 @@ def generate_summary_with_gemini(paper_info: PaperInfo, full_text: str) -> str:
 # 論文本文（またはアブストラクト）
 {full_text[:GEMINI_INPUT_MAX_CHARS]}
 
-# 解説のポイント
-1. この研究が解決しようとしている問題点は何か？
-2. どのような新しい手法やアプローチを用いたか？
-3. この研究の最も重要な発見や結論は何か？
-4. この発見が将来どのような影響を与える可能性があるか？
+# 出力フォーマット（必ずこの順番・見出しで出力）
+## 背景・課題
+- ...
 
-以上の点を踏まえて、日本語で解説を生成してください。
+## 手法
+- ...
+
+## 主結果
+- ...
+
+## 新規性（先行研究との差分）
+- ...
+
+## 限界・今後の課題
+- ...
+
+要件:
+- 各セクションは2〜4個の箇条書きで簡潔に書くこと。
+- 数式の厳密な導出は省略してよいが、専門用語は適切に用いること。
+- 推測ではなく、与えられた本文（またはアブストラクト）に根拠がある内容を優先すること。
+- 日本語で出力すること。
 """
     try:
         response = gemini_client.models.generate_content(
@@ -190,7 +205,7 @@ def build_paper_info(entry: ET.Element, ns: dict, published_dt: datetime) -> Pap
 
 
 def search_arxiv() -> List[PaperInfo]:
-    """arXiv APIでキーワードに合致する過去24時間の論文を検索する。"""
+    """arXiv APIでキーワードに合致する前日投稿分（JST）の論文を検索する。"""
     print(f"キーワード '{SEARCH_KEYWORDS}' で論文を検索中...")
 
     query = build_search_query()
@@ -214,7 +229,7 @@ def search_arxiv() -> List[PaperInfo]:
     ns = {'atom': 'http://www.w3.org/2005/Atom'}
 
     found_papers: List[PaperInfo] = []
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    target_date = (datetime.now(LOCAL_TIMEZONE) - timedelta(days=1)).date()
 
     for entry in root.findall('atom:entry', ns):
         try:
@@ -222,7 +237,8 @@ def search_arxiv() -> List[PaperInfo]:
             published_dt = datetime.strptime(
                 published_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
 
-            if published_dt > yesterday:
+            published_local_date = published_dt.astimezone(LOCAL_TIMEZONE).date()
+            if published_local_date == target_date:
                 found_papers.append(build_paper_info(entry, ns, published_dt))
         except Exception as e:
             print(f"エントリ解析中にスキップ（理由: {e}）")
@@ -279,11 +295,34 @@ def build_paper_section(index: int, paper: PaperInfo, summary_ja: str) -> str:
 """
 
 
+def build_keyword_counts_section(papers: List[PaperInfo]) -> str:
+    """キーワードごとの対象件数をメール表示用文字列で返す。"""
+    keywords = parse_csv_env(SEARCH_KEYWORDS)
+    if not keywords:
+        return ""
+
+    searchable_texts = [f"{paper['title']}\n{paper['summary']}".lower() for paper in papers]
+    lines = ["【キーワード別対象件数】"]
+    for keyword in keywords:
+        normalized_keyword = keyword.lower()
+        hit_count = sum(1 for text in searchable_texts if normalized_keyword in text)
+        lines.append(f"- {keyword}: {hit_count}件")
+
+    return "\n".join(lines) + "\n\n"
+
+
 def build_email_body(papers: List[PaperInfo]) -> str:
     """検索結果からメール本文を構築する。"""
     full_email_body = (
         f"キーワード「{SEARCH_KEYWORDS}」に関する新しい論文が {len(papers)}件 見つかりました。\n\n"
     )
+
+    full_email_body += build_keyword_counts_section(papers)
+
+    full_email_body += "【対象論文タイトル一覧】\n"
+    for i, paper in enumerate(papers, 1):
+        full_email_body += f"{i}. {paper['title']}\n"
+    full_email_body += "\n"
 
     for i, paper in enumerate(papers, 1):
         if i > 1:
