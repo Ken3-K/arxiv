@@ -16,7 +16,7 @@ import time
 from typing import List, Optional, TypedDict
 import requests
 import xml.etree.ElementTree as ET
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -75,9 +75,10 @@ MAIL_SUBJECT = get_env_var("MAIL_SUBJECT")
 
 
 # --- 2. GEMINI API SETUP ---
+gemini_client: Optional[genai.Client] = None
 if GEMINI_API_KEY:
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
         print("Gemini APIキーが正常に設定されました。")
     except Exception as e:
         print(f"Gemini APIキーの設定中にエラー: {e}")
@@ -88,11 +89,8 @@ else:
 
 def generate_summary_with_gemini(paper_info: PaperInfo, full_text: str) -> str:
     """Geminiを使用して論文の概要を生成する。"""
-    if not GEMINI_API_KEY:
+    if not GEMINI_API_KEY or gemini_client is None:
         return "（Geminiによる解説はスキップされました：APIキーが未設定です）"
-
-    model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-    # model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
     prompt = f"""以下のarXiv論文について、内容を専門外の人が読んでも理解できるように、重要なポイントを箇条書きで分かりやすく解説してください。
 
@@ -112,9 +110,12 @@ def generate_summary_with_gemini(paper_info: PaperInfo, full_text: str) -> str:
 以上の点を踏まえて、日本語で解説を生成してください。
 """
     try:
-        response = model.generate_content(prompt)
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL_NAME,
+            contents=prompt,
+        )
         time.sleep(1)
-        return response.text
+        return response.text or "（Geminiから空の応答が返されました）"
     except Exception as e:
         print(f"Gemini APIでの解説生成中にエラー: {e}")
         return f"（Geminiによる解説生成中にエラーが発生しました: {e}）"
