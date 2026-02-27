@@ -60,8 +60,8 @@ jobs:
           SEARCH_CATEGORY: "astro-ph.CO,gr-qc,hep-th,hep-ph"
           SMTP_SERVER: "smtp.gmail.com"
           SMTP_PORT: "587"
-          SMTP_USER: "kenzaburo.kawaguchi@gmail.com"
-          MAIL_FROM: "kenzaburo.kawaguchi@gmail.com"
-          MAIL_TO: "kenzaburo.kawaguchi@gmail.com"
+          SMTP_USER: ${{ secrets.MAIL_ADDRESS }}
+          MAIL_FROM: ${{ secrets.MAIL_ADDRESS }}
+          MAIL_TO: ${{ secrets.MAIL_ADDRESS }}
           MAIL_SUBJECT: "【arXiv Alerter】注目論文が見つかりました"
         run: python arxiv_alerter.py
