@@ -95,6 +95,12 @@ GitHub Actionsで定期実行できます。ワークフロー定義は以下で
 
 - `.github/workflows/arxiv_alerter.yml`
 
+GitHub Actionsで運用する場合は、以下を設定してください。
+
+- Repository Secrets: `GEMINI_API_KEY`, `SMTP_PASSWORD`, `MAIL_ADDRESS`
+
+`SEARCH_KEYWORDS` などの非機密設定は、ワークフロー内に直書きしています（必要に応じて `.github/workflows/arxiv_alerter.yml` を編集してください）。
+
 詳細な設定手順（Secrets設定・運用方針など）は参考記事を参照してください。
 
 - https://qiita.com/Ken3_K/items/ff18cae48aed928a7309

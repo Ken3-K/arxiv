@@ -53,15 +53,18 @@ jobs:
       # ステップ6: Pythonスクリプトを実行
       - name: Run arXiv Alerter script
         env:
-          # (envセクションは変更なし)
+          # Secrets（機密情報）
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SEARCH_KEYWORDS: "inflation, primordial black hole, PBH"
-          SEARCH_CATEGORY: "astro-ph.CO,gr-qc,hep-th,hep-ph"
-          SMTP_SERVER: "smtp.gmail.com"
-          SMTP_PORT: "587"
           SMTP_USER: ${{ secrets.MAIL_ADDRESS }}
           MAIL_FROM: ${{ secrets.MAIL_ADDRESS }}
           MAIL_TO: ${{ secrets.MAIL_ADDRESS }}
+
+          # 非機密（直書き）
+          SEARCH_KEYWORDS: "inflation, primordial black hole, axion search"
+          SEARCH_CATEGORY: "astro-ph.CO,gr-qc,hep-th,hep-ph"
+          SMTP_SERVER: "smtp.gmail.com"
+          SMTP_PORT: "587"
           MAIL_SUBJECT: "【arXiv Alerter】注目論文が見つかりました"
+          TEST_MODE: "false"
         run: python arxiv_alerter.py
