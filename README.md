@@ -63,12 +63,23 @@ cp config.env.example config.env
 - ただし未設定の場合、Geminiによる解説は生成されず、メール内に「スキップされた」旨の文言が入ります。
 - 解説機能を使いたい場合は、`GEMINI_API_KEY` を設定してください。
 
+#### テストモード（任意）
+
+- `TEST_MODE=true` を設定すると、メール送信を行わず本文をコンソール出力します。
+- SMTP設定の事前確認やプロンプト出力確認に使えます。
+
 ---
 
 ## 使い方
 
 ```bash
 python arxiv_alerter.py
+```
+
+テスト送信（メール送信なし）で確認したい場合:
+
+```bash
+TEST_MODE=true python arxiv_alerter.py
 ```
 
 ### 実行結果

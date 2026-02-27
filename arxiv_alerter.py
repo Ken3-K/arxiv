@@ -58,12 +58,18 @@ def parse_csv_env(value: str) -> List[str]:
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def parse_bool_env(value: str) -> bool:
+    """文字列環境変数をboolへ変換する。"""
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # arXiv用
 SEARCH_KEYWORDS = get_env_var("SEARCH_KEYWORDS")
 SEARCH_CATEGORY = get_env_var("SEARCH_CATEGORY")
 
 # Gemini API用
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+TEST_MODE = parse_bool_env(os.environ.get("TEST_MODE", "false"))
 
 # メール送信用
 SMTP_SERVER = get_env_var("SMTP_SERVER")
@@ -252,6 +258,13 @@ def search_arxiv() -> List[PaperInfo]:
 
 def send_email(subject: str, body: str) -> None:
     """メールを送信する。"""
+    if TEST_MODE:
+        print("TEST_MODE=true のため、メール送信をスキップします。")
+        print("\n===== メール本文（テスト表示） =====\n")
+        print(body)
+        print("\n===== ここまで =====\n")
+        return
+
     if not all([SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, MAIL_FROM, MAIL_TO]):
         print("メール設定が不完全なため、送信をスキップします。")
         return
