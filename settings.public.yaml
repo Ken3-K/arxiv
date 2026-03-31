@@ -1,0 +1,84 @@
+# ============================================================
+# arXiv Alerter - 公開設定ファイル (settings.public.yaml)
+# ============================================================
+# このファイルには機密情報を含めないでください。
+# 機密情報（APIキー・パスワード・メールアドレス等）は環境変数で設定してください。
+
+# --- arXiv検索設定 ---
+arxiv:
+  # 検索キーワード（カンマ区切りでOR検索）
+  search_keywords: "inflation, primordial black hole, axion search, axion dark matter"
+  # 検索対象カテゴリ（カンマ区切り、'all'で全カテゴリ）
+  search_category: "astro-ph.CO, astro-ph.GA, gr-qc, hep-th, hep-ph"
+  # 1回の検索で取得する最大件数
+  max_results: 25
+  # HTTPリクエストのタイムアウト秒数
+  request_timeout_seconds: 30
+
+# --- Gemini API設定 ---
+gemini:
+  # 使用するGeminiモデル名
+  model_name: "gemini-3-flash-preview"
+  # 入力テキストの最大文字数（超過分はトリム）
+  input_max_chars: 100000
+  # レート制限: 1分あたりの最大リクエスト数（0で無制限）
+  max_requests_per_minute: 5
+  # レート制限エラー時の最大リトライ回数
+  max_retries: 3
+  # リトライ時の初期待機秒数（指数バックオフ）
+  retry_base_delay_seconds: 5
+
+# --- 論文処理設定 ---
+processing:
+  # 論文ごとの処理間隔（秒）- Gemini APIレート制限対策
+  per_paper_delay_seconds: 5
+
+# --- タイムゾーン設定 ---
+timezone:
+  # ローカルタイムゾーンのUTCオフセット（時間）
+  utc_offset_hours: 9
+  # タイムゾーン名（表示用）
+  name: "JST"
+
+# --- メール設定 ---
+mail:
+  # メール件名のデフォルト値
+  subject_default: "【arXiv Alerter】注目論文が見つかりました"
+  # SMTPポートのデフォルト値
+  smtp_port_default: 587
+  # SMTPサーバーのデフォルト値
+  smtp_server_default: "smtp.gmail.com"
+
+# --- メールテンプレート ---
+# 変数: {keywords}, {count}
+mail_template:
+  # メール本文の冒頭
+  header: |
+    キーワード「{keywords}」に関する新しい論文が {count}件 見つかりました。
+
+  # キーワード別件数セクションのタイトル
+  keyword_counts_title: "【キーワード別対象件数】"
+
+  # 対象論文一覧セクションのタイトル
+  paper_list_title: "【対象論文タイトル一覧】"
+
+  # 論文セクションのセパレーター
+  paper_separator: "=================================================="
+
+  # Gemini解説セクションのヘッダー
+  gemini_section_header: "--- Geminiによる解説 ---"
+
+  # Original Abstractセクションのヘッダー
+  abstract_section_header: "--- Original Abstract ---"
+
+  # セクション終端のライン
+  section_footer: "--------------------------"
+
+  # Geminiスキップ時のメッセージ
+  gemini_skip_message: "（Geminiによる解説はスキップされました：APIキーが未設定です）"
+
+  # Geminiエラー時のメッセージテンプレート
+  gemini_error_message: "（Geminiによる解説生成中にエラーが発生しました: {error}）"
+
+  # Gemini空応答時のメッセージ
+  gemini_empty_message: "（Geminiから空の応答が返されました）"

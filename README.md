@@ -21,11 +21,25 @@ arXivの新着論文をキーワード検索し、Geminiで日本語解説を生
 
 ---
 
-## 設定方法
+## 設定の種類
+
+本ツールは**公開設定**と**機密設定**を分離しています。
+
+| 種類 | ファイル/方法 | 内容 |
+|------|--------------|------|
+| **公開設定** | `settings.public.yaml` | 検索設定、Geminiモデル、メールテンプレート等 |
+| **プロンプト** | `prompts/summary_ja.txt` | Gemini解説生成用プロンプト |
+| **機密設定** | 環境変数 / `config.env` | APIキー、パスワード、メールアドレス |
+
+> ⚠️ `config.env` はGitにコミットしないでください（`.gitignore` で除外済み）。
+
+---
+
+## ローカル環境でのセットアップ
 
 ### 1. 前提
 
-- Python 3.x
+- Python 3.9以上
 - SMTP送信可能なメールアカウント
 - （推奨）Gemini APIキー
 
@@ -35,80 +49,132 @@ arXivの新着論文をキーワード検索し、Geminiで日本語解説を生
 pip install -r requirements.txt
 ```
 
-### 3. `config.env` の設定
-
-まずテンプレートをコピーして設定ファイルを作成します。
+### 3. 設定ファイルの準備
 
 ```bash
+# 機密設定用ファイルを作成
 cp config.env.example config.env
 ```
 
-作成した `config.env` に必要な設定を記述します。
+`config.env` を編集して機密情報を設定：
 
-#### 必須
+```bash
+# [必須] メール認証（TEST_MODE=true なら不要）
+SMTP_USER="your_email@gmail.com"
+SMTP_PASSWORD="your_app_password"
+MAIL_FROM="your_email@gmail.com"
+MAIL_TO="your_email@gmail.com"
 
-- `SEARCH_KEYWORDS`
-- `SEARCH_CATEGORY`
-- `SMTP_SERVER`
-- `SMTP_PORT`
-- `SMTP_USER`
-- `SMTP_PASSWORD`
-- `MAIL_FROM`
-- `MAIL_TO`
-- `MAIL_SUBJECT`
+# [任意] Gemini API（未設定でも動作、解説はスキップ）
+GEMINI_API_KEY="your_gemini_api_key"
+```
 
-#### Gemini APIキーについて
+### 4. 公開設定のカスタマイズ（任意）
 
-- `GEMINI_API_KEY` は**スクリプト実行自体には必須ではありません**。
-- ただし未設定の場合、Geminiによる解説は生成されず、メール内に「スキップされた」旨の文言が入ります。
-- 解説機能を使いたい場合は、`GEMINI_API_KEY` を設定してください。
+`settings.public.yaml` で検索キーワードや各種設定を変更できます：
 
-#### テストモード（任意）
-
-- `TEST_MODE=true` を設定すると、メール送信を行わず本文をコンソール出力します。
-- SMTP設定の事前確認やプロンプト出力確認に使えます。
+```yaml
+arxiv:
+  search_keywords: "machine learning, neural network"
+  search_category: "cs.AI, cs.LG"
+```
 
 ---
 
 ## 使い方
 
+### 通常実行
+
 ```bash
 python arxiv_alerter.py
 ```
 
-テスト送信（メール送信なし）で確認したい場合:
+### テストモード
+
+メール送信せず、生成されるメール本文を確認できます。  
+**SMTP認証情報は不要**です。
 
 ```bash
 TEST_MODE=true python arxiv_alerter.py
 ```
 
+または `config.env` で `TEST_MODE="true"` を設定。
+
 ### 実行結果
 
-- 新着論文がある場合: 指定メールアドレスに通知されます。
-- 新着論文がない場合: 「処理対象の論文はありませんでした。」と表示して終了します。
+- 新着論文がある場合: 指定メールアドレスに通知
+- 新着論文がない場合: 「処理対象の論文はありませんでした。」と表示
 
 ---
 
-## 自動実行（任意）
+## GitHub Actions での自動実行
 
-GitHub Actionsで定期実行できます。ワークフロー定義は以下です。
+### 1. Repository Secrets の設定
 
-- `.github/workflows/arxiv_alerter.yml`
+リポジトリの **Settings > Secrets and variables > Actions > Secrets** で以下を設定：
 
-GitHub Actionsで運用する場合は、以下を設定してください。
+| Secret名 | 内容 |
+|----------|------|
+| `GEMINI_API_KEY` | Gemini APIキー |
+| `SMTP_USER` | SMTP認証ユーザー |
+| `SMTP_PASSWORD` | SMTPパスワード（Gmailはアプリパスワード） |
+| `MAIL_FROM` | 送信元メールアドレス |
+| `MAIL_TO` | 送信先メールアドレス |
 
-- Repository Secrets: `GEMINI_API_KEY`, `SMTP_PASSWORD`, `MAIL_ADDRESS`
+### 2. Repository Variables の設定（任意）
 
-`SEARCH_KEYWORDS` などの非機密設定は、ワークフロー内に直書きしています（必要に応じて `.github/workflows/arxiv_alerter.yml` を編集してください）。
+**Settings > Secrets and variables > Actions > Variables** で検索設定をカスタマイズ：
 
-詳細な設定手順（Secrets設定・運用方針など）は参考記事を参照してください。
+| Variable名 | 内容 | 例 |
+|------------|------|-----|
+| `SEARCH_KEYWORDS` | 検索キーワード | `machine learning, deep learning` |
+| `SEARCH_CATEGORY` | 検索カテゴリ | `cs.AI, cs.LG` |
 
-- https://qiita.com/Ken3_K/items/ff18cae48aed928a7309
+> 未設定の場合は `settings.public.yaml` の値が使用されます。
+
+### 3. ワークフローの有効化
+
+Fork後、**Actions** タブでワークフローを有効化してください。
+
+- デフォルトでは毎日 JST 10:00 に自動実行
+- 手動実行: Actions > arXiv Keyword Alerter > Run workflow
+
+---
+
+## 環境変数一覧
+
+| 変数名 | 必須 | 説明 |
+|--------|:----:|------|
+| `SEARCH_KEYWORDS` | ○* | 検索キーワード（カンマ区切り） |
+| `SEARCH_CATEGORY` | ○* | 検索カテゴリ（カンマ区切り） |
+| `SMTP_USER` | △ | SMTP認証ユーザー（TEST_MODE=false時必須） |
+| `SMTP_PASSWORD` | △ | SMTPパスワード（TEST_MODE=false時必須） |
+| `MAIL_FROM` | △ | 送信元アドレス（TEST_MODE=false時必須） |
+| `MAIL_TO` | △ | 送信先アドレス（TEST_MODE=false時必須） |
+| `GEMINI_API_KEY` | - | Gemini APIキー（未設定で解説スキップ） |
+| `GEMINI_MAX_REQUESTS_PER_MINUTE` | - | レート制限（未指定時はYAMLの値を使用） |
+| `TEST_MODE` | - | テストモード（デフォルト: false） |
+| `SMTP_SERVER` | - | SMTPサーバー（未指定時はYAMLの値を使用） |
+| `SMTP_PORT` | - | SMTPポート（未指定時はYAMLの値を使用） |
+| `MAIL_SUBJECT` | - | メール件名（未指定時はYAMLの値を使用） |
+| `SETTINGS_PUBLIC_PATH` | - | 公開設定ファイルパス |
+| `GEMINI_PROMPT_PATH` | - | プロンプトファイルパス |
+
+*: `settings.public.yaml` で設定されていれば環境変数は省略可
+
+非機密の既定値は `settings.public.yaml` のみを参照します（コード側の固定既定値は持ちません）。
 
 ---
 
 ## 注意事項
 
-- APIキー・SMTPパスワード・メールアドレスなどの機密情報は公開しないでください。
-- 公開リポジトリでは、実値を含む設定ファイルのコミットを避けてください。
-- 論文ごとに待機（`sleep`）が入るため、件数が多いと実行時間が長くなります。
+- APIキー・パスワード・メールアドレスなどの**機密情報は公開しない**でください
+- 公開リポジトリでは `config.env` をコミットしないでください
+- Gemini無料枠はレート制限があります（`GEMINI_MAX_REQUESTS_PER_MINUTE` で調整可）
+- 論文ごとに待機が入るため、件数が多いと実行時間が長くなります
+
+---
+
+## 参考
+
+- https://qiita.com/Ken3_K/items/ff18cae48aed928a7309
