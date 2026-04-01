@@ -1,7 +1,7 @@
 # GitHub Actions Workflow: arXiv Keyword Alerter
 # ==============================================================================
 # このワークフローはForkしたユーザー向けに設計されています。
-# 以下のSecretsとVariablesを設定してご利用ください。
+# 以下のSecretsを設定してご利用ください。
 # ==============================================================================
 
 name: arXiv Keyword Alerter
@@ -63,11 +63,6 @@ jobs:
       #     - SMTP_PASSWORD: SMTPパスワード（Gmailアプリパスワード等）
       #     - MAIL_FROM: 送信元メールアドレス
       #     - MAIL_TO: 送信先メールアドレス
-      #
-      #   [Repository Variables] (Settings > Secrets and variables > Actions)
-      #     - SEARCH_KEYWORDS: 検索キーワード（カンマ区切り）
-      #     - SEARCH_CATEGORY: 検索カテゴリ（カンマ区切り）
-      #     ※ Variablesが未設定の場合は settings.public.yaml の値が使用されます
       # ----------------------------------------------------------------------
       - name: Run arXiv Alerter script
         env:
@@ -77,18 +72,4 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
-
-          # Variables（公開設定）- 未設定時は settings.public.yaml を参照
-          SEARCH_KEYWORDS: ${{ vars.SEARCH_KEYWORDS }}
-          SEARCH_CATEGORY: ${{ vars.SEARCH_CATEGORY }}
-
-          # 任意上書き（未設定時は settings.public.yaml を使用）
-          SMTP_SERVER: ${{ vars.SMTP_SERVER }}
-          SMTP_PORT: ${{ vars.SMTP_PORT }}
-          MAIL_SUBJECT: ${{ vars.MAIL_SUBJECT }}
-          TEST_MODE: "false"
-
-          # Geminiレート制限（無料枠対策）
-          # ※ 未設定時は settings.public.yaml の値を使用
-          GEMINI_MAX_REQUESTS_PER_MINUTE: ${{ vars.GEMINI_MAX_REQUESTS_PER_MINUTE }}
         run: python arxiv_alerter.py

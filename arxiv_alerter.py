@@ -117,11 +117,6 @@ class AppConfig:
 # --- 設定読み込み ---
 
 
-def parse_bool_env(value: str) -> bool:
-    """文字列をboolへ変換する。"""
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
 def parse_csv(value: str) -> List[str]:
     """カンマ区切り文字列をトリム済みリストへ変換する。空要素は除外する。"""
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -138,19 +133,6 @@ def get_env(name: str, default: Optional[str] = None, required: bool = False) ->
     return value if value else None
 
 
-def get_env_int(name: str, default: int) -> int:
-    """環境変数を整数として取得する。"""
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    try:
-        parsed = int(value.strip())
-    except ValueError:
-        print(f"エラー: 環境変数 '{name}' の値 '{value}' は整数で指定してください。")
-        sys.exit(1)
-    return parsed
-
-
 def ensure_int(value: Any, field_name: str, minimum: Optional[int] = None) -> int:
     """設定値を整数として検証する。"""
     try:
@@ -163,6 +145,20 @@ def ensure_int(value: Any, field_name: str, minimum: Optional[int] = None) -> in
         print(f"エラー: 設定値 '{field_name}' は {minimum} 以上で指定してください。現在値: {parsed}")
         sys.exit(1)
     return parsed
+
+
+def ensure_bool(value: Any, field_name: str) -> bool:
+    """設定値をboolとして検証する。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    print(f"エラー: 設定値 '{field_name}' は true/false で指定してください。現在値: {value}")
+    sys.exit(1)
 
 
 def render_template_text(template: str, values: dict[str, Any]) -> str:
@@ -224,19 +220,17 @@ def get_required_yaml_value(section: dict[str, Any], key: str, field_name: str) 
 
 
 def load_config() -> AppConfig:
-    """環境変数とYAMLファイルから設定を読み込む。"""
+    """YAMLファイル（公開設定）と環境変数（機密設定）から設定を読み込む。"""
     script_dir = Path(__file__).parent
     # .envファイルの読み込み（ローカル用、存在しなくてもOK）
     load_dotenv(dotenv_path=script_dir / "config.env")
 
-    test_mode = parse_bool_env(os.environ.get("TEST_MODE", "false"))
-
-    # 設定ファイルパス（環境変数でオーバーライド可能）
-    settings_path = Path(get_env("SETTINGS_PUBLIC_PATH", str(script_dir / "settings.public.yaml")))
-    prompt_path = Path(get_env("GEMINI_PROMPT_PATH", str(script_dir / "prompts" / "summary_ja.txt")))
+    # 公開設定ファイルの読み込み（パス固定）
+    settings_path = script_dir / "settings.public.yaml"
 
     # YAML設定の読み込み
     yaml_cfg = load_yaml_config(settings_path)
+    runtime_yaml = get_required_yaml_section(yaml_cfg, "runtime")
     arxiv_yaml = get_required_yaml_section(yaml_cfg, "arxiv")
     gemini_yaml = get_required_yaml_section(yaml_cfg, "gemini")
     processing_yaml = get_required_yaml_section(yaml_cfg, "processing")
@@ -244,27 +238,29 @@ def load_config() -> AppConfig:
     mail_yaml = get_required_yaml_section(yaml_cfg, "mail")
     mail_template_yaml = get_required_yaml_section(yaml_cfg, "mail_template")
 
+    # 実行設定
+    test_mode = ensure_bool(
+        get_required_yaml_value(runtime_yaml, "test_mode", "runtime.test_mode"),
+        "runtime.test_mode",
+    )
+    prompt_path_str = str(
+        get_required_yaml_value(runtime_yaml, "gemini_prompt_path", "runtime.gemini_prompt_path")
+    )
+    prompt_path = Path(prompt_path_str)
+    if not prompt_path.is_absolute():
+        prompt_path = script_dir / prompt_path
+
     # プロンプトの読み込み
     prompt_template = load_prompt_template(prompt_path)
 
-    # arXiv設定: 環境変数 > YAML
-    search_keywords = get_env("SEARCH_KEYWORDS") or get_required_yaml_value(
-        arxiv_yaml, "search_keywords", "arxiv.search_keywords"
-    )
-    search_category = get_env("SEARCH_CATEGORY") or get_required_yaml_value(
-        arxiv_yaml, "search_category", "arxiv.search_category"
-    )
-    if not search_keywords:
-        print("エラー: SEARCH_KEYWORDS が設定されていません（環境変数または settings.public.yaml で指定してください）。")
-        sys.exit(1)
-    if not search_category:
-        print("エラー: SEARCH_CATEGORY が設定されていません（環境変数または settings.public.yaml で指定してください）。")
-        sys.exit(1)
+    # arXiv設定
+    search_keywords = str(get_required_yaml_value(arxiv_yaml, "search_keywords", "arxiv.search_keywords"))
+    search_category = str(get_required_yaml_value(arxiv_yaml, "search_category", "arxiv.search_category"))
     if not parse_csv(search_keywords):
-        print("エラー: SEARCH_KEYWORDS は空要素のみです。少なくとも1つのキーワードを指定してください。")
+        print("エラー: settings.public.yaml の 'arxiv.search_keywords' は空要素のみです。")
         sys.exit(1)
     if search_category.lower() != "all" and not parse_csv(search_category):
-        print("エラー: SEARCH_CATEGORY は空要素のみです。カテゴリを指定するか 'all' を使用してください。")
+        print("エラー: settings.public.yaml の 'arxiv.search_category' は空要素のみです。")
         sys.exit(1)
 
     arxiv_config = ArxivConfig(
@@ -283,11 +279,6 @@ def load_config() -> AppConfig:
     )
 
     # Gemini設定
-    default_gemini_rpm = ensure_int(
-        get_required_yaml_value(gemini_yaml, "max_requests_per_minute", "gemini.max_requests_per_minute"),
-        "gemini.max_requests_per_minute",
-        minimum=0,
-    )
     gemini_config = GeminiConfig(
         model_name=str(get_required_yaml_value(gemini_yaml, "model_name", "gemini.model_name")),
         input_max_chars=ensure_int(
@@ -296,8 +287,8 @@ def load_config() -> AppConfig:
             minimum=1,
         ),
         max_requests_per_minute=ensure_int(
-            get_env_int("GEMINI_MAX_REQUESTS_PER_MINUTE", default_gemini_rpm),
-            "GEMINI_MAX_REQUESTS_PER_MINUTE",
+            get_required_yaml_value(gemini_yaml, "max_requests_per_minute", "gemini.max_requests_per_minute"),
+            "gemini.max_requests_per_minute",
             minimum=0,
         ),
         max_retries=ensure_int(
@@ -335,27 +326,22 @@ def load_config() -> AppConfig:
         name=str(get_required_yaml_value(tz_yaml, "name", "timezone.name")),
     )
 
-    # Mail設定: 環境変数 > YAML（TEST_MODEでは認証値不要）
-    default_smtp_port = ensure_int(
-        get_required_yaml_value(mail_yaml, "smtp_port_default", "mail.smtp_port_default"),
-        "mail.smtp_port_default",
-        minimum=1,
-    )
+    # Mail設定（送信先/認証情報は環境変数。非機密はYAML）
     mail_config = MailConfig(
-        smtp_server=get_env("SMTP_SERVER") or str(
-            get_required_yaml_value(mail_yaml, "smtp_server_default", "mail.smtp_server_default")
+        smtp_server=str(get_required_yaml_value(mail_yaml, "smtp_server_default", "mail.smtp_server_default")),
+        smtp_port=ensure_int(
+            get_required_yaml_value(mail_yaml, "smtp_port_default", "mail.smtp_port_default"),
+            "mail.smtp_port_default",
+            minimum=1,
         ),
-        smtp_port=ensure_int(get_env_int("SMTP_PORT", default_smtp_port), "SMTP_PORT", minimum=1),
         smtp_user=get_env("SMTP_USER"),
         smtp_password=get_env("SMTP_PASSWORD"),
         mail_from=get_env("MAIL_FROM"),
         mail_to=get_env("MAIL_TO"),
-        subject=get_env("MAIL_SUBJECT") or str(
-            get_required_yaml_value(mail_yaml, "subject_default", "mail.subject_default")
-        ),
+        subject=str(get_required_yaml_value(mail_yaml, "subject_default", "mail.subject_default")),
     )
 
-    # TEST_MODEでない場合のみSMTP認証情報を必須チェック
+    # runtime.test_mode=false の場合のみSMTP認証情報を必須チェック
     if not test_mode:
         missing = []
         if not mail_config.smtp_user:
@@ -367,7 +353,10 @@ def load_config() -> AppConfig:
         if not mail_config.mail_to:
             missing.append("MAIL_TO")
         if missing:
-            print(f"エラー: 以下の環境変数が設定されていません（TEST_MODE=false時は必須）: {', '.join(missing)}")
+            print(
+                "エラー: 以下の環境変数が設定されていません（runtime.test_mode=false時は必須）: "
+                f"{', '.join(missing)}"
+            )
             sys.exit(1)
 
     # MailTemplate設定
@@ -761,7 +750,7 @@ def build_email_body(
 def send_email(subject: str, body: str, config: AppConfig) -> None:
     """メールを送信する。"""
     if config.test_mode:
-        print("TEST_MODE=true のため、メール送信をスキップします。")
+        print("runtime.test_mode=true のため、メール送信をスキップします。")
         print("\n===== メール本文（テスト表示） =====\n")
         print(body)
         print("\n===== ここまで =====\n")

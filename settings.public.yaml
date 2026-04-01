@@ -4,6 +4,15 @@
 # このファイルには機密情報を含めないでください。
 # 機密情報（APIキー・パスワード・メールアドレス等）は環境変数で設定してください。
 
+# --- 実行設定 ---
+runtime:
+  # テストモード:
+  # true  -> メール送信せず本文を標準出力に表示（SMTP認証情報不要）
+  # false -> SMTP経由でメール送信
+  test_mode: false
+  # Gemini要約プロンプトファイルパス（絶対/相対どちらでも可。相対はこのYAML基準）
+  gemini_prompt_path: "prompts/summary_ja.txt"
+
 # --- arXiv検索設定 ---
 arxiv:
   # 検索キーワード（カンマ区切りでOR検索）
