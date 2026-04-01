@@ -29,7 +29,7 @@ gemini:
   # 使用するGeminiモデル名
   model_name: "gemini-3-flash-preview"
   # 入力テキストの最大文字数（超過分はトリム）
-  input_max_chars: 100000
+  input_max_chars: 1000000
   # レート制限: 1分あたりの最大リクエスト数（0で無制限）
   max_requests_per_minute: 5
   # レート制限エラー時の最大リトライ回数
