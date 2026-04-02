@@ -16,7 +16,7 @@ runtime:
 # --- arXiv検索設定 ---
 arxiv:
   # 検索キーワード（カンマ区切りでOR検索）
-  search_keywords: "inflation, primordial black hole, axion search, axion dark matter"
+  search_keywords: "inflation, lattice simulation, primordial black hole, axion search, axion dark matter"
   # 検索対象カテゴリ（カンマ区切り、'all'で全カテゴリ）
   search_category: "astro-ph.CO, astro-ph.GA, gr-qc, hep-th, hep-ph"
   # 1回の検索で取得する最大件数

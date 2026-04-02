@@ -702,6 +702,8 @@ def build_paper_section(
 {paper['summary']}
 {template.section_footer}
 
+リンク: {paper['link']}
+
 """
 
 
